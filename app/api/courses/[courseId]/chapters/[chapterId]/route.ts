@@ -4,10 +4,9 @@ import Mux from "@mux/mux-node";
 import { db } from "@/lib/db";
 
 const { Video } = new Mux(
-    process.env.MUX_TOKEN_ID!,
-    process.env.MUX_TOKEN_SECRET!,
-  );
-  
+  process.env.MUX_TOKEN_ID!,
+  process.env.MUX_TOKEN_SECRET!
+);
 
 export async function PATCH(
   req: Request,
@@ -24,8 +23,8 @@ export async function PATCH(
     const ownCourse = await db.course.findUnique({
       where: {
         id: params.courseId,
-        userId
-      }
+        userId,
+      },
     });
 
     if (!ownCourse) {
@@ -39,41 +38,46 @@ export async function PATCH(
       },
       data: {
         ...values,
-      }
+      },
     });
     if (values.videoUrl) {
-        const existingMuxData = await db.muxData.findFirst({
-          where: {
-            chapterId: params.chapterId,
-          }
-        });
-  
-        if (existingMuxData) {
+      const existingMuxData = await db.muxData.findFirst({
+        where: {
+          chapterId: params.chapterId,
+        },
+      });
+
+      if (existingMuxData) {
+        try {
           await Video.Assets.del(existingMuxData.assetId);
-          await db.muxData.delete({
-            where: {
-              id: existingMuxData.id,
-            }
-          });
+        } catch (err) {
+          console.log("Mux expired the video");
         }
-  
-        const asset = await Video.Assets.create({
-          input: values.videoUrl,
-          playback_policy: "public",
-          test: false,
-        });
-  
-        await db.muxData.create({
-          data: {
-            chapterId: params.chapterId,
-            assetId: asset.id,
-            playbackId: asset.playback_ids?.[0]?.id,
-          }
+
+        await db.muxData.delete({
+          where: {
+            id: existingMuxData.id,
+          },
         });
       }
+
+      const asset = await Video.Assets.create({
+        input: values.videoUrl,
+        playback_policy: "public",
+        test: false,
+      });
+
+      await db.muxData.create({
+        data: {
+          chapterId: params.chapterId,
+          assetId: asset.id,
+          playbackId: asset.playback_ids?.[0]?.id,
+        },
+      });
+    }
     return NextResponse.json(chapter);
   } catch (error) {
     console.log("[COURSES_CHAPTER_ID]", error);
-    return new NextResponse("Internal Error", { status: 500 }); 
+    return new NextResponse("Internal Error", { status: 500 });
   }
 }
